@@ -15,47 +15,52 @@
 
 variable "vision_version" {
   description = "V.R.M.F of IBM Visual Insights"
-  default = "1.2.0.0"
+  default     = "1.2.0.0"
+}
+
+variable "resource_group_name" {
+  description = "Name of the resource group to provision the resources. For resource group name, Run this command - ibmcloud resource groups"
+  default     = "Default"
 }
 
 variable "vpc_basename" {
   description = "Denotes the name of the VPC that IBM Visual Insights will be deployed into. Resources associated with IBM Visual Insights will be prepended with this name."
-  default = "ibm-visual-insights-trial"
+  default     = "ibm-visual-insights-trial"
 }
 
 variable "cos_bucket_base" {
   description = "HTTP URL for COS bucket containing install media (e.g. http://region/bucket with no trailing slash)"
-  default = "https://vision-cloud-trial.s3.direct.us-east.cloud-object-storage.appdomain.cloud"
+  default     = "https://vision-cloud-trial.s3.direct.us-east.cloud-object-storage.appdomain.cloud"
 }
 
 variable "vision_deb_name" {
   description = "Install debian name (e.g. visual-insights_1.x.y.deb )"
-  default = "visual-insights_1.2.0.0-508.bfb5f12~trial_ppc64el.deb"
+  default     = "visual-insights_1.2.0.0-508.bfb5f12~trial_ppc64el.deb"
 }
 
 variable "vision_tar_name" {
   description = "Install images name (e.g. visual-insights-images-1.x.y.0.tar)"
-  default = "visual-insights-images-1.2.0.0.tar"
+  default     = "visual-insights-images-1.2.0.0.tar"
 }
 
 variable "boot_image_name" {
   description = "name of the base image for the virtual server (should be an Ubuntu 18.04 base)"
-  default = "ibm-ubuntu-18-04-3-minimal-ppc64le-2" #Ubuntu 18.04
+  default     = "ibm-ubuntu-18-04-3-minimal-ppc64le-2" #Ubuntu 18.04
 }
 
 variable "vpc_region" {
   description = "Target region to create this instance of IBM Visual Insights"
-  default = "us-south"
+  default     = "us-south"
 }
 
 variable "vpc_zone" {
   description = "Target availbility zone to create this instance of IBM Visual Insights"
-  default = "us-south-1"
+  default     = "us-south-1"
 }
 
 variable "vm_profile" {
   description = "What resources or VM profile should we create for compute? gp2-24x224x2 provides 2 GPUs and 224GB RAM"
-  default = "gp2-24x224x2"
+  default     = "gp2-24x224x2"
 }
 
 #################################################
@@ -63,34 +68,41 @@ variable "vm_profile" {
 #################################################
 
 data ibm_is_image "bootimage" {
-    name =  "${var.boot_image_name}"
+  name = "${var.boot_image_name}"
 }
 
+data "ibm_resource_group" "group" {
+  name = "${var.resource_group_name}"
+}
 
 #Create a VPC for the application
 resource "ibm_is_vpc" "vpc" {
-  name = "${var.vpc_basename}-vpc1"
+  name           = "${var.vpc_basename}-vpc1"
+  resource_group = "${data.ibm_resource_group.group.id}"
 }
 
 #Create a subnet for the application
 resource "ibm_is_subnet" "subnet" {
-  name = "${var.vpc_basename}-subnet1"
-  vpc = "${ibm_is_vpc.vpc.id}"
-  zone = "${var.vpc_zone}"
-  ip_version = "ipv4"
+  name                     = "${var.vpc_basename}-subnet1"
+  vpc                      = "${ibm_is_vpc.vpc.id}"
+  zone                     = "${var.vpc_zone}"
+  ip_version               = "ipv4"
   total_ipv4_address_count = 32
+  resource_group           = "${data.ibm_resource_group.group.id}"
 }
 
 #Create an SSH key which will be used for provisioning by this template, and for debug purposes
 resource "ibm_is_ssh_key" "public_key" {
-  name = "${var.vpc_basename}-public-key"
-  public_key = "${tls_private_key.vision_keypair.public_key_openssh}"
+  name           = "${var.vpc_basename}-public-key"
+  public_key     = "${tls_private_key.vision_keypair.public_key_openssh}"
+  resource_group = "${data.ibm_resource_group.group.id}"
 }
 
 #Create a public floating IP so that the app is available on the Internet
 resource "ibm_is_floating_ip" "fip1" {
-  name = "${var.vpc_basename}-subnet-fip1"
-  target = "${ibm_is_instance.vm.primary_network_interface.0.id}"
+  name           = "${var.vpc_basename}-subnet-fip1"
+  target         = "${ibm_is_instance.vm.primary_network_interface.0.id}"
+  resource_group = "${data.ibm_resource_group.group.id}"
 }
 
 #Enable ssh into the instance for debug
@@ -98,9 +110,9 @@ resource "ibm_is_security_group_rule" "sg1-tcp-rule" {
   depends_on = [
     "ibm_is_floating_ip.fip1"
   ]
-  group = "${ibm_is_vpc.vpc.default_security_group}"
+  group     = "${ibm_is_vpc.vpc.default_security_group}"
   direction = "inbound"
-  remote = "0.0.0.0/0"
+  remote    = "0.0.0.0/0"
 
 
   tcp {
@@ -114,9 +126,9 @@ resource "ibm_is_security_group_rule" "sg2-tcp-rule" {
   depends_on = [
     "ibm_is_floating_ip.fip1"
   ]
-  group = "${ibm_is_vpc.vpc.default_security_group}"
+  group     = "${ibm_is_vpc.vpc.default_security_group}"
   direction = "inbound"
-  remote = "0.0.0.0/0"
+  remote    = "0.0.0.0/0"
 
   tcp {
     port_min = 443
@@ -129,9 +141,9 @@ resource "ibm_is_security_group_rule" "sg3-tcp-rule" {
   depends_on = [
     "ibm_is_floating_ip.fip1"
   ]
-  group = "${ibm_is_vpc.vpc.default_security_group}"
+  group     = "${ibm_is_vpc.vpc.default_security_group}"
   direction = "inbound"
-  remote = "0.0.0.0/0"
+  remote    = "0.0.0.0/0"
 
   tcp {
     port_min = 80
@@ -140,15 +152,16 @@ resource "ibm_is_security_group_rule" "sg3-tcp-rule" {
 }
 
 resource "ibm_is_instance" "vm" {
-  name = "${var.vpc_basename}-vm1"
-  image = "${data.ibm_is_image.bootimage.id}"
+  name    = "${var.vpc_basename}-vm1"
+  image   = "${data.ibm_is_image.bootimage.id}"
   profile = "${var.vm_profile}"
+  resource_group = "${data.ibm_resource_group.group.id}"
 
   primary_network_interface {
     subnet = "${ibm_is_subnet.subnet.id}"
   }
 
-  vpc = "${ibm_is_vpc.vpc.id}"
+  vpc  = "${ibm_is_vpc.vpc.id}"
   zone = "${var.vpc_zone}" //make this a variable when there's more than one option
 
   keys = [
@@ -164,15 +177,15 @@ resource "ibm_is_instance" "vm" {
 
 #Create a login password which will be used for the main IBM Visual Insights application
 resource "random_password" "vision_password" {
-  length = 16
-  special = true
+  length           = 16
+  special          = true
   override_special = "!@_"
 }
 
 #Create a ssh keypair which will be used to provision code onto the system - and also access the VM for debug if needed.
 resource "tls_private_key" "vision_keypair" {
   algorithm = "RSA"
-  rsa_bits = "2048"
+  rsa_bits  = "2048"
 }
 
 
@@ -188,21 +201,21 @@ resource "null_resource" "provisioners" {
   ]
 
   provisioner "file" {
-    source = "scripts"
+    source      = "scripts"
     destination = "/tmp"
     connection {
-      type = "ssh"
-      user = "root"
-      agent = false
-      timeout = "5m"
-      host = "${ibm_is_floating_ip.fip1.address}"
+      type        = "ssh"
+      user        = "root"
+      agent       = false
+      timeout     = "5m"
+      host        = "${ibm_is_floating_ip.fip1.address}"
       private_key = "${tls_private_key.vision_keypair.private_key_pem}"
     }
   }
 
 
   provisioner "file" {
-    content = <<ENDENVTEMPL
+    content     = <<ENDENVTEMPL
 #!/bin/bash -xe
 export RAMDISK=/tmp/ramdisk
 export DOCKERMOUNT=/var/lib/docker
@@ -213,11 +226,11 @@ export URLPAIVDEB="$${COS_BUCKET_BASE}/${var.vision_deb_name}"
 ENDENVTEMPL
     destination = "/tmp/scripts/env.sh"
     connection {
-      type = "ssh"
-      user = "root"
-      agent = false
-      timeout = "5m"
-      host = "${ibm_is_floating_ip.fip1.address}"
+      type        = "ssh"
+      user        = "root"
+      agent       = false
+      timeout     = "5m"
+      host        = "${ibm_is_floating_ip.fip1.address}"
       private_key = "${tls_private_key.vision_keypair.private_key_pem}"
     }
   }
@@ -240,11 +253,11 @@ ENDENVTEMPL
       "rm -rf /tmp/scripts"
     ]
     connection {
-      type = "ssh"
-      user = "root"
-      agent = false
-      timeout = "5m"
-      host = "${ibm_is_floating_ip.fip1.address}"
+      type        = "ssh"
+      user        = "root"
+      agent       = false
+      timeout     = "5m"
+      host        = "${ibm_is_floating_ip.fip1.address}"
       private_key = "${tls_private_key.vision_keypair.private_key_pem}"
     }
   }
